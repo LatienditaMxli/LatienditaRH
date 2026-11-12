@@ -1,1 +1,392 @@
-AQUI VAN LOS DATOS DEL SISTEMA
+VERSION 1.0.0.0
+
+
+DOCUMENTO DE REFERENCIA LEGAL
+Sistema LaTienditaRH - Cálculos de Nómina, Prestaciones y Obligaciones Fiscales
+Ejercicio 2026
+Documento para validación por contador
+Versión en texto plano para archivo TXT
+
+PROPOSITO DEL DOCUMENTO
+Este documento sirve como guía de validación para el contador. Cada sección indica:
+
+Fundamento legal exacto (artículo, fracción, ley).
+
+Fórmula implementada en el sistema.
+
+Parámetros 2026 (valores oficiales del DOF).
+
+Archivo del sistema donde se ejecuta el cálculo.
+
+Nota importante: Todos los parámetros legales (UMA, salario mínimo, tarifas, topes, porcentajes) son configurables por año desde la base de datos. Cuando cambien las leyes (UMA en febrero, SM en enero, tarifas en enero), solo se actualiza la tabla correspondiente en la BD sin tocar código. Esto es crítico para 2027, cuando entran en vigor nuevas disposiciones.
+
+PARAMETROS GENERALES 2026
+
+1.1. UMA (Unidad de Medida y Actualización)
+Concepto: Valor
+Fundamento: Art. 26 Constitucional; Ley de la UMA; INEGI (DOF 09/01/2026)
+Vigencia: A partir del 1 de febrero de 2026
+UMA Diaria: $117.31 MXN
+UMA Mensual: $3,566.22 MXN
+UMA Anual: $42,794.64 MXN
+Configuración BD: uma.diario, uma.mensual, uma.anual
+
+1.2. Salario Mínimo 2026
+Concepto: Valor
+Fundamento: Art. 123 Constitucional; CONASAMI (DOF 09/12/2025)
+Vigencia: A partir del 1 de enero de 2026
+Zona General (ZSMG): $315.04 MXN/día ($9,582.47/mes)
+Zona Frontera Norte (ZLFN): $440.87 MXN/día ($13,409.80/mes)
+Configuración BD: nomina.salario_minimo_diario = 315.04
+
+ISR MENSUAL (ART. 96 LISR)
+
+2.1. Fundamento Legal
+Art. 96 LISR: Tarifa mensual para retenciones de sueldos y salarios.
+Art. 175 RLISR: Mecánica de cálculo.
+Anexo 8 RMF 2026 (DOF 28/12/2025): Tarifa oficial 2026.
+
+2.2. Fórmula
+ISR causado mensual = Cuota Fija + [(Ingreso Gravable Mensual - Límite Inferior) x % Excedente]
+ISR a retener = max(0, ISR causado - Subsidio para el Empleo del periodo)
+
+2.3. Tarifa Mensual 2026 (Anexo 8 RMF) - 11 tramos
+Límite Inferior | Límite Superior | Cuota Fija | % Excedente
+$0.01 | $844.59 | $0.00 | 1.92%
+$844.60 | $7,168.51 | $16.22 | 6.40%
+$7,168.52 | $12,598.02 | $420.95 | 10.88%
+$12,598.03 | $14,644.64 | $1,011.68 | 16.00%
+$14,644.65 | $17,533.64 | $1,339.14 | 17.92%
+$17,533.65 | $35,362.83 | $1,856.84 | 21.36%
+$35,362.84 | $55,736.68 | $5,665.16 | 23.52%
+$55,736.69 | $106,410.50 | $10,457.09 | 30.00%
+$106,410.51 | $141,880.66 | $25,659.23 | 32.00%
+$141,880.67 | $425,641.99 | $37,009.69 | 34.00%
+$425,642.00 | En adelante | $133,488.54 | 35.00%
+
+2.4. Mecánica de Mensualización
+Ingreso Mensualizado = Ingreso del Periodo x (30.4 / Días del Periodo)
+Aplicar tarifa mensual al ingreso mensualizado.
+ISR del Periodo = ISR Mensual x (Días del Periodo / 30.4)
+Días base: 30.4 (configurable en isr.dias_base_mes).
+
+2.5. Exención de Salario Mínimo
+Art. 96, último párrafo LISR: Quien perciba hasta un salario mínimo general no paga ISR.
+Límite 2026: $9,587.50/mes (configurable isr.limite_exencion_salario_minimo).
+Si Ingreso Mensualizado <= Límite, entonces ISR = $0.
+
+2.6. Implementación
+Archivo: NominaService.cs -> CalcularIsrARetener()
+Tarifa desde BD: tabla rrhh_isr_tarifa (11 tramos por ejercicio).
+Fallback: tabla 2026 en memoria si no hay tarifa en BD.
+
+SUBSIDIO PARA EL EMPLEO 2026
+
+3.1. Fundamento Legal
+Decreto DOF 31/12/2025 (Subsidio para el Empleo 2026).
+Art. 96 LISR (aplicación contra el ISR causado).
+
+3.2. Parámetros 2026
+Concepto: Valor
+Límite de ingresos mensuales para acceder: $11,492.66 MXN
+Porcentaje del subsidio: 15.02% de la UMA mensual
+Monto mensual del subsidio: $536.22 MXN (UMA mensual $3,566.22 x 15.02%)
+Excepción enero 2026: $536.21 (UMA 2025)
+
+3.3. Fórmula
+Subsidio del Periodo = $536.22 x (Días del Periodo / 30.4)
+ISR a Retener = max(0, ISR Causado - Subsidio)
+
+3.4. Configuración BD
+isr.limite_subsidio_mensual = 11492.66
+isr.porcentaje_subsidio = 15.02
+isr.monto_subsidio_mensual = 536.22
+
+ISR ANUAL (ART. 152 LISR) - DECLARACIÓN ANUAL
+
+4.1. Fundamento Legal
+Art. 152 LISR: Tarifa anual para personas físicas.
+Art. 97 LISR: Declaración anual.
+Anexo 8 RMF 2026: Tarifa anual 2026.
+
+4.2. Tarifa Anual 2026
+Límite Inferior | Límite Superior | Cuota Fija | % Excedente
+$0.01 | $10,135.08 | $0.00 | 1.92%
+$10,135.09 | $86,022.12 | $194.64 | 6.40%
+$86,022.13 | $151,176.24 | $5,051.96 | 10.88%
+$151,176.25 | $175,728.24 | $12,141.46 | 16.00%
+$175,728.25 | $210,397.68 | $16,069.78 | 17.92%
+$210,397.69 | $424,353.96 | $22,283.05 | 21.36%
+$424,353.97 | $668,841.84 | $67,982.21 | 23.52%
+$668,841.85 | $1,276,926.00 | $125,490.04 | 30.00%
+$1,276,926.01 | $1,702,568.04 | $307,915.28 | 32.00%
+$1,702,568.05 | $5,107,704.00 | $444,122.77 | 34.00%
+$5,107,704.01 | En adelante | $1,601,912.06 | 35.00%
+
+Nota: La tarifa anual no es exactamente la mensual x 12. El SAT aplica ajustes de centavos. Por eso el sistema tiene una tabla separada rrhh_isr_tarifa_anual con los valores oficiales del Anexo 8.
+
+4.3. Implementación
+Archivo: DeclaracionAnualService.cs -> CalcularIsrAnual()
+Tabla BD: rrhh_isr_tarifa_anual (11 tramos por ejercicio).
+
+IMSS - CUOTAS OBRERO-PATRONALES 2026
+
+5.1. Fundamento Legal
+Ley del Seguro Social (LSS): Arts. 106, 107, 147, 168, 211.
+Ley del INFONAVIT: Art. 29 Fr. II.
+Decreto DOF 16/12/2020: Reforma de pensiones - CEAV progresiva.
+
+5.2. Cuotas Obreras (Descontadas al Trabajador)
+Ramo | Cuota Obrera | Base
+Enfermedad y Maternidad - Excedente 3 UMA | 0.40% | Diferencia entre SBC y 3 UMA
+Enfermedad y Maternidad - Prestaciones en dinero | 0.25% | SBC
+Gastos Médicos para Pensionados | 0.375% | SBC
+Invalidez y Vida (I&V) | 0.625% | SBC
+Cesantía en Edad Avanzada y Vejez (CEAV) | 1.125% (fija) | SBC
+
+5.3. Cuotas Patronales
+Ramo | Cuota Patronal | Base
+Enfermedad y Maternidad - Cuota fija | 20.40% | UMA (hasta 3 UMA)
+Enfermedad y Maternidad - Excedente 3 UMA | 1.10% | Diferencia SBC - 3 UMA
+Enfermedad y Maternidad - Prestaciones en dinero | 0.70% | SBC
+Gastos Médicos para Pensionados | 1.05% | SBC
+Invalidez y Vida (I&V) | 1.75% | SBC
+Retiro (SAR) | 2.00% | SBC
+CEAV (progresiva) | 3.150% a 7.513% según tramo SBC en UMA | SBC
+Guarderías y Prestaciones Sociales | 1.00% | SBC
+INFONAVIT | 5.00% | SBC
+
+5.4. SBC Integrado
+Fórmula: SBC = Salario Diario x Factor de Integración
+Factor mínimo legal: 1.0493 (15 días aguinaldo + 12 vacaciones + 25% prima vacacional).
+Tope: 25 UMA diarias.
+Configuración BD: imss.factor_integracion_sbc = 1.0493; imss.tope_sbc_uma = 25.
+
+5.5. Implementación
+Archivo: ImssCalculatorService.cs -> Calcular()
+Tabla BD: rrhh_imss_ceav_tarifa (8 tramos de CEAV patronal por ejercicio).
+
+HORAS EXTRA (ART. 66-68 LFT)
+
+6.1. Fundamento Legal
+Art. 66 LFT: Jornada extraordinaria máxima de 9 horas semanales, pagadas al doble.
+Art. 68 LFT: Excedente sobre 9 horas, pagado al triple. Tope de 4 horas semanales adicionales.
+Reforma 2026: Los topes se mantienen (9 dobles + 4 triples).
+
+6.2. Reglas Implementadas
+Tope diario: 3 horas extra por día.
+Tope semanal: 13 horas (9 dobles + 4 triples).
+Cálculo por semana natural (lunes a domingo).
+Primeras 9 horas de la semana: pagadas al doble (factor 2x).
+Excedente sobre 9 horas: pagado al triple (factor 3x).
+
+6.3. Fórmula
+Valor Hora Normal = Salario Diario / Horas por Día
+Valor Hora Extra Doble = Valor Hora Normal x 2
+Valor Hora Extra Triple = Valor Hora Normal x 3
+
+6.4. Implementación
+Archivo: NominaService.cs -> SumarRetardosYCalcularHorasExtra()
+
+PRIMA DOMINICAL (ART. 71 LFT)
+
+7.1. Fundamento Legal
+Art. 71 LFT: Prima adicional del 25% sobre el salario de los días ordinarios por cada domingo trabajado.
+Art. 93, Fracción XIV LISR: Exención de 1 UMA por cada domingo laborado ($117.31 en 2026).
+
+7.2. Fórmula
+Prima Bruta por Domingo = Salario Diario x 25%
+Prima Bruta Total = Prima Bruta por Domingo x Domingos Trabajados
+Exento = Domingos Trabajados x UMA Diaria
+Gravado = Prima Bruta Total - Exento
+
+7.3. Implementación
+Archivo: NominaService.cs -> bloque PRIMA_DOMINICAL.
+Tabla BD: rrhh_prima_dominical_parametros (25%, exención $315.04/día).
+
+VACACIONES (ART. 76 LFT - REFORMA 2023)
+
+8.1. Tabla Vigente 2026
+Años de Antigüedad | Días de Vacaciones
+1 año | 12 días
+2 años | 14 días
+3 años | 16 días
+4 años | 18 días
+5 años | 20 días
+6 a 10 años | 22 días
+11 a 15 años | 24 días
+16 a 20 años | 26 días
+21 a 25 años | 28 días
+26 años o más | 30 días
+
+8.2. Implementación
+Archivo: VacacionService.cs -> ObtenerDiasPorAntiguedad()
+Tabla BD: rrhh_vacaciones_tabla_dias (10 rangos LFT).
+
+PRIMA VACACIONAL (ART. 80 LFT)
+
+9.1. Fundamento Legal
+Art. 80 LFT: Prima mínima del 25% sobre el salario correspondiente a los días de vacaciones.
+Art. 93, Fracción XIV LISR: Exención de 15 UMA ($1,759.65 en 2026).
+
+9.2. Fórmula
+Prima Bruta = Salario Diario x Días de Vacaciones x 25%
+Exento = min(Prima Bruta, 15 UMA)
+Gravado = Prima Bruta - Exento
+
+9.3. Implementación
+Archivos: VacacionService.cs y FiniquitoService.cs.
+Configuración BD: nomina.porcentaje_prima_vac = 0.25.
+
+AGUINALDO (ART. 87 LFT)
+
+10.1. Fundamento Legal
+Art. 87 LFT: Aguinaldo mínimo de 15 días de salario, pagadero antes del 20 de diciembre.
+Art. 93, Fracción XIV LISR: Exención de 30 UMA ($3,519.30 en 2026).
+
+10.2. Fórmula (Proporcional)
+Días de Aguinaldo Proporcional = 15 x (Días Trabajados en el Año / 365)
+Aguinaldo Bruto = Salario Diario x Días Proporcionales
+Exento = min(Aguinaldo Bruto, 30 UMA)
+Gravado = Aguinaldo Bruto - Exento
+
+10.3. ISR sobre la Parte Gravada
+Método: Art. 174 RLISR (tasa efectiva del último sueldo).
+Implementación: AguinaldoService.cs -> CalcularIsrAguinaldoExacto()
+
+FINIQUITO Y LIQUIDACIÓN (LFT)
+
+11.1. Finiquito (Siempre)
+Concepto | Fundamento | Fórmula
+Sueldo pendiente | - | Salario Diario x Días Pendientes
+Aguinaldo proporcional | Art. 87 LFT | 15 días x (Días Trabajados / 365)
+Vacaciones proporcionales | Art. 76 LFT | Días de Vacaciones x (Días Trabajados / 365)
+Prima vacacional | Art. 80 LFT | Vacaciones Proporcionales x 25%
+Prima de antigüedad | Art. 162 LFT | 12 días x Años de Servicio x Salario (topado a 2 SM)
+
+11.2. Liquidación (Solo Despido Injustificado)
+Concepto | Fundamento | Fórmula
+Indemnización constitucional | Art. 48 LFT | 90 días x SDI
+20 días por año | Art. 50 LFT | 20 días x Años de Servicio x SDI
+
+11.3. Exenciones ISR en Finiquito (Art. 93 LISR)
+Indemnización y prima de antigüedad: Exentas hasta 90 UMA por año de servicio ($10,557.90/año).
+Aguinaldo: Exento hasta 30 UMA ($3,519.30).
+Prima vacacional: Exenta hasta 15 UMA ($1,759.65).
+
+11.4. Implementación
+Archivo: FiniquitoService.cs -> Calcular()
+Tabla BD: rrhh_finiquito_parametros (por ejercicio).
+
+PTU - REPARTO DE UTILIDADES (ART. 117-131 LFT)
+
+12.1. Fundamento Legal
+Art. 117 LFT: Reparto del 10% de la utilidad fiscal de la empresa.
+Art. 123 LFT: Reparto en dos mitades: 50% por días trabajados, 50% por salario percibido.
+Art. 127 LFT: Tope individual: 3 meses de salario o promedio de PTU de últimos 3 años (el mayor).
+
+12.2. Fórmula
+Monto a Repartir = Utilidad Fiscal x 10%
+Monto por Días = Monto a Repartir x 50%
+Monto por Salario = Monto a Repartir x 50%
+PTU por Empleado = (Monto por Días x Días del Empleado / Total Días) + (Monto por Salario x Salario del Empleado / Total Salarios)
+Tope Individual = max(90 días de SDI, Promedio PTU 3 años)
+
+12.3. Exención ISR
+Art. 93, Fracción XIV LISR: Exención de 15 UMA ($1,759.65 en 2026).
+
+12.4. Implementación
+Archivo: PtuService.cs -> Calcular()
+Tablas BD: rrhh_ptu_parametros, rrhh_ptu_ejercicios, rrhh_ptu_detalle.
+
+DECLARACIÓN ANUAL DE EMPLEADOS (ART. 151 Y 152 LISR)
+
+13.1. Fundamento Legal
+Art. 151 LISR: Deducciones personales para asalariados.
+Art. 152 LISR: Tarifa anual del ISR.
+Art. 97 LISR: Obligación de declarar.
+
+13.2. Límite Global de Deducciones Personales
+Regla: Menor entre 15% de los ingresos anuales o 5 UMA anuales ($213,973.20).
+Configuración BD: declaracion.limite_deducciones_uma = 5; declaracion.limite_deducciones_pct = 0.15.
+
+13.3. Deducciones que Entran al Límite Global
+Gastos médicos, dentales, hospitalarios, psicólogo, nutricionista.
+Primas de seguros médicos.
+Gastos funerarios (tope individual de 1 UMA).
+Intereses reales de crédito hipotecario.
+
+13.4. Deducciones Fuera del Límite Global
+Deducción | Tope
+Colegiaturas | Hasta $24,500 (bachillerato) según nivel
+Transporte escolar | $2,000 anuales
+Donativos | 7% de ingresos del año anterior
+Aportaciones a PPR | 10% de ingresos, tope 5 UMA
+
+13.5. Obligación de Declarar
+Umbral 2026: Ingresos por sueldos > $400,000.
+
+13.6. Implementación
+Archivo: DeclaracionAnualService.cs -> Calcular()
+Tablas BD: rrhh_declaracion_deducciones, rrhh_isr_tarifa_anual.
+
+BONOS Y COMISIONES
+
+14.1. Fundamento Legal
+Art. 93 LISR: No otorga exención para bonos o comisiones. Son 100% gravables para ISR.
+LSS Art. 27: Forman parte del SBC (base variable).
+
+14.2. Tratamiento en el Sistema
+Se capturan en rrhh_nomina_bonos (por empleado y periodo, o por fecha libre).
+Se suman al total de percepciones del recibo.
+Aumentan la base gravable de ISR (no tienen exención).
+No modifican la cuota IMSS calculada (SBC fijo; los bonos variables no están integrados aún al cálculo IMSS).
+
+14.3. Implementación
+Archivo: NominaService.cs -> bloque 7 BONOS Y COMISIONES.
+Tabla BD: rrhh_nomina_bonos.
+
+PARAMETROS CONFIGURABLES POR AÑO (BD)
+El sistema tiene tablas por ejercicio para que el contador o el ADMIN_RH actualicen los valores cada año sin tocar código:
+
+Tabla / Claves | Qué contiene | Cuándo se actualiza
+rrhh_isr_tarifa | Tarifa mensual ISR (11 tramos) | Enero (Anexo 8 RMF)
+rrhh_isr_tarifa_anual | Tarifa anual ISR (11 tramos) | Enero (Anexo 8 RMF)
+rrhh_imss_ceav_tarifa | CEAV patronal progresiva (8 tramos) | Enero
+rrhh_finiquito_parametros | Días de indemnización, prima antigüedad, topes | Cada año o cuando cambie la LFT
+rrhh_ptu_parametros | % reparto, tope 3 meses, exención | Cada año fiscal
+rrhh_aguinaldo_parametros | 15 días, exención 30 UMA | Cada año
+rrhh_prima_dominical_parametros | 25%, exención 1 UMA | Cada año
+rrhh_configuracion (claves isr., uma., declaracion., imss.) | UMA, subsidio, límites de deducciones, etc. | Febrero (UMA) y enero (SM)
+
+Protección: Solo el rol ADMIN_RH puede modificar estas tablas desde la interfaz (Configuración -> Tarifa ISR / Nómina). Todos los cambios quedan registrados en rrhh_parametros_historial (auditoría con usuario, fecha y valores anterior/nuevo).
+
+CHECKLIST PARA EL CONTADOR
+
+¿El ISR mensual se calcula con la tarifa del Art. 96 LISR y se mensualiza correctamente?
+
+¿Se aplica el Subsidio para el Empleo ($536.22/mes) cuando el ingreso es <= $11,492.66?
+
+¿Se aplica la exención de salario mínimo ($9,587.50/mes) cuando corresponde?
+
+¿El IMSS obrero se desglosa correctamente (E&M, I&V, CEAV)?
+
+¿El SBC integrado usa el factor 1.0493 y el tope de 25 UMA?
+
+¿Las horas extra se calculan por semana natural (9 dobles + excedente triple)?
+
+¿La prima dominical aplica 25% y exenta 1 UMA por domingo?
+
+¿El aguinaldo proporcional y su exención de 30 UMA son correctos?
+
+¿El finiquito incluye todas las prestaciones y aplica las exenciones del Art. 93?
+
+¿La liquidación por despido injustificado suma 90 días + 20 días/año + prima de antigüedad?
+
+¿La PTU se reparte 50/50 y se topa a 3 meses de salario?
+
+¿La declaración anual usa la tarifa del Art. 152 y los límites del Art. 151?
+
+¿Los bonos y comisiones se gravan al 100%?
+
+Fin del documento. Cualquier duda sobre la implementación de algún cálculo se puede revisar directamente en el archivo .cs indicado en cada sección. Todos los parámetros legales están en BD y son auditables.
